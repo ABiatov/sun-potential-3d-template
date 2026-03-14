@@ -1,0 +1,112 @@
+{
+  "map": {
+    "crs": "EPSG:3763",
+    "proj4": "+proj=tmerc +lat_0=39.66825833333333 +lon_0=-8.133108333333333 +k=1 +x_0=0 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+    "center": [-8.823868, 41.702556],
+    "center_crs": "EPSG:4326",
+    "zoom": 20,
+    "pitch": 55,
+    "bearing": 0,
+    "extent_size": [2400, 2400],
+    "background_color": "#dce0e3",
+    "elevation_no_colormap_background_color": "#ffffff",
+    "terrain_enabled": true,
+    "layer_offsets": {
+      "osm_map_z": 0,
+      "overlay_terrain_on_z": 0.2,
+      "overlay_terrain_off_z": 6
+    },
+    "base_layer": {
+      "id": "osm",
+      "name": "OpenStreetMap",
+      "type": "osm",
+      "is_active": true,
+      "z_order": 0
+    },
+    "mask_layer": {
+      "id": "mask",
+      "name": "Mask",
+      "type": "geojson_mask",
+      "url": "./data/mask.geojson",
+      "data_projection": "EPSG:3763",
+      "mask_mode": "normal",
+      "fill_color": "white",
+      "is_active": true
+    },
+    "hillshading": {
+      "enabled": true,
+      "is_masked": true,
+      "azimuth": 315,
+      "zenith": 45,
+      "intensity": 1,
+      "z_factor": 1,
+      "elevation_layers_only": true
+    }
+  },
+  "elevation": {
+    "id": "terrain",
+    "name": "Terrain Elevation",
+    "format": "GeoTIFFFormat",
+    "source": "./data/dsm.tif",
+    "channels": [0],
+    "min": 10,
+    "max": 55,
+    "resolution_factor": 0.5,
+    "is_active": true,
+    "is_masked": true
+  },
+  "layers": [
+    {
+      "id": "elevation",
+      "name": "Elevation",
+      "type": "cog_raster",
+      "url": "./data/dsm.tif",
+      "channels": [0],
+      "is_active": true,
+      "is_masked": true,
+      "z_order": 2,
+      "style_config": {
+        "opacity": 1,
+        "blending_mode": "normal", 
+        "nodata": -9999,
+        "colormap_name": "turbo",
+        "value_range": {
+          "min": 10,
+          "max": 55
+        }
+      }
+    },
+    {
+      "id": "orthophoto",
+      "name": "Orthophotomap",
+      "type": "cog_rgb",
+      "url": "./data/orthophoto_rgb.tif",
+      "channels": [0, 1, 2],
+      "is_active": false,
+      "is_masked": true,
+      "z_order": 3,
+      "style_config": {
+        "opacity": 1
+      }
+    },
+    {
+      "id": "annual-poa",
+      "name": "Annual POA",
+      "type": "cog_raster",
+      "url": "./data/poa.tif",
+      "channels": [0],
+      "is_active": true,
+      "is_masked": true,
+      "z_order": 4,
+      "style_config": {
+        "opacity": 1,
+        "nodata": -9999,
+        "colormap_name": "inferno",
+        "value_range": {
+          "min": 1000,
+          "max": 2750
+        }
+      }
+    }
+  ]
+}

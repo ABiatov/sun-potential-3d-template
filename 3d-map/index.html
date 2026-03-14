@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Giro3D 3D Map</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div id="view"></div>
+
+    <div class="map-ui" aria-label="Layer controls">
+      <h2>Layers</h2>
+
+      <div id="layers-list"></div>
+
+      <label class="switch-row" for="hillshading-toggle">
+        <input id="hillshading-toggle" type="checkbox" role="switch" checked />
+        <span>Hillshading</span>
+      </label>
+
+      <label class="switch-row" for="terrain-deformation">
+        <input id="terrain-deformation" type="checkbox"  checked />
+        <span>Terrain deformation</span>
+      </label>
+
+      <section class="measure-widget" aria-label="Measurements">
+        <h3>Measurements</h3>
+        <div class="measure-actions">
+          <button id="measure-distance" type="button">Distance</button>
+          <button id="measure-area" type="button">Area</button>
+          <button id="measure-height" type="button">Height</button>
+          <button id="measure-angle" type="button">Angle</button>
+          <button id="measure-clear" type="button">Clear</button>
+        </div>
+        <div class="measure-units">
+          <label for="measure-length-unit">Lengths</label>
+          <select id="measure-length-unit">
+            <option value="m" selected>Meters</option>
+            <option value="ft">Feet</option>
+          </select>
+          <label for="measure-area-unit">Areas</label>
+          <select id="measure-area-unit">
+            <option value="m" selected>m² / km²</option>
+            <option value="ha">Hectares</option>
+            <option value="acre">Acres</option>
+          </select>
+        </div>
+      </section>
+
+
+      <button id="home-button" class="home-button" type="button" aria-label="Home" title="Home">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M12 3 3 10.5l1.4 1.7L6 10.9V21h12V10.9l1.6 1.3 1.4-1.7L12 3zm4 16h-3v-5h-2v5H8v-9.8l4-3.3 4 3.3V19z" />
+        </svg>
+      </button>
+    </div>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
