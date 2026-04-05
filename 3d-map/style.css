@@ -263,6 +263,58 @@ body {
   margin-bottom: 4px;
 }
 
+.minimap-widget {
+  margin: 10px 0 12px;
+  padding-top: 10px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.minimap-widget h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.minimap-canvas {
+  width: min(100%, 300px);
+  height: 180px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+.minimap-canvas canvas {
+  display: block;
+}
+
+.minimap-canvas .maplibregl-map {
+  width: 100%;
+  height: 100%;
+}
+
+.minimap-canvas .maplibregl-canvas:focus {
+  outline: none;
+}
+
+.minimap-canvas .maplibregl-ctrl-bottom-right {
+  margin: 0 4px 4px 0;
+}
+
+.minimap-canvas .maplibregl-ctrl-attrib {
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 6px;
+}
+
+.minimap-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #4b5563;
+}
+
 .map-ui > .switch-row:last-of-type {
   margin-bottom: 12px;
 }

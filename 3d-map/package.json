@@ -4,14 +4,15 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "dev": "vite --host localhost --port 5173",
-    "dev:80": "vite --host localhost --port 80",
+    "dev": "vite --force --host localhost --port 5173",
+    "dev:80": "vite --force --host localhost --port 80",
     "build": "vite build",
     "preview": "vite preview --host localhost --port 4173"
   },
   "dependencies": {
     "@giro3d/giro3d": "^2.0.0-dev",
     "geotiff": "^3.0.2",
+    "maplibre-gl": "^5.22.0",
     "proj4": "^2.19.10",
     "three": "^0.170.0"
   },

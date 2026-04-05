@@ -1,4 +1,6 @@
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { fromUrl as openGeoTIFF } from 'geotiff';
+import maplibregl from 'maplibre-gl';
 import proj4 from 'proj4';
 import { GeoJSON } from 'ol/format.js';
 import { Fill, Style } from 'ol/style.js';
@@ -51,6 +53,27 @@ const CLICK_SAMPLE_FORMATTER = new Intl.NumberFormat(undefined, {
 const GENERATION_EFFICIENCY = 0.22;
 const GENERATION_LOSSES = 0.8;
 const GENERATION_FORECAST_LAYER_IDS = new Set(['annual-poa', 'poa-sweet-spots']);
+const MINIMAP_ZOOM_OFFSET = 3.5;
+const MINIMAP_MASK_SOURCE_ID = 'minimap-mask';
+const MINIMAP_CENTER_SOURCE_ID = 'minimap-center';
+const MINIMAP_OSM_STYLE = {
+  version: 8,
+  sources: {
+    osm: {
+      type: 'raster',
+      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      attribution: '&copy; OpenStreetMap contributors',
+    },
+  },
+  layers: [
+    {
+      id: 'osm',
+      type: 'raster',
+      source: 'osm',
+    },
+  ],
+};
 let lazPerfWasmBinaryPromise = null;
 
 function makeGradientFromStops(stops, shades = 256) {
@@ -164,12 +187,157 @@ function lonLatToProjected(center, fromCrs, toCrs) {
   return [x, y];
 }
 
+function projectCoordinates(coordinates, fromCrs, toCrs) {
+  if (!Array.isArray(coordinates) || coordinates.length < 2) {
+    return coordinates;
+  }
+  if (fromCrs === toCrs) {
+    return coordinates;
+  }
+  const [x, y] = proj4(fromCrs, toCrs, coordinates);
+  return coordinates.length > 2 ? [x, y, ...coordinates.slice(2)] : [x, y];
+}
+
+function transformNestedCoordinates(coordinates, fromCrs, toCrs) {
+  if (!Array.isArray(coordinates)) {
+    return coordinates;
+  }
+
+  if (coordinates.length >= 2 && Number.isFinite(coordinates[0]) && Number.isFinite(coordinates[1])) {
+    return projectCoordinates(coordinates, fromCrs, toCrs);
+  }
+
+  return coordinates.map(item => transformNestedCoordinates(item, fromCrs, toCrs));
+}
+
+function transformGeometryToCrs(geometry, fromCrs, toCrs) {
+  if (!geometry) {
+    return geometry;
+  }
+
+  if (geometry.type === 'GeometryCollection') {
+    return {
+      ...geometry,
+      geometries: (geometry.geometries ?? []).map(item => transformGeometryToCrs(item, fromCrs, toCrs)),
+    };
+  }
+
+  return {
+    ...geometry,
+    coordinates: transformNestedCoordinates(geometry.coordinates, fromCrs, toCrs),
+  };
+}
+
+function transformGeoJSONToCrs(geojson, fromCrs, toCrs) {
+  if (!geojson || fromCrs === toCrs) {
+    return geojson;
+  }
+
+  switch (geojson.type) {
+    case 'FeatureCollection':
+      return {
+        ...geojson,
+        features: (geojson.features ?? []).map(feature => ({
+          ...feature,
+          geometry: transformGeometryToCrs(feature.geometry, fromCrs, toCrs),
+        })),
+      };
+    case 'Feature':
+      return {
+        ...geojson,
+        geometry: transformGeometryToCrs(geojson.geometry, fromCrs, toCrs),
+      };
+    default:
+      return transformGeometryToCrs(geojson, fromCrs, toCrs);
+  }
+}
+
+function expandBoundsFromCoordinates(bounds, coordinates) {
+  if (!Array.isArray(coordinates)) {
+    return;
+  }
+
+  if (coordinates.length >= 2 && Number.isFinite(coordinates[0]) && Number.isFinite(coordinates[1])) {
+    bounds[0] = Math.min(bounds[0], coordinates[0]);
+    bounds[1] = Math.min(bounds[1], coordinates[1]);
+    bounds[2] = Math.max(bounds[2], coordinates[0]);
+    bounds[3] = Math.max(bounds[3], coordinates[1]);
+    return;
+  }
+
+  for (const item of coordinates) {
+    expandBoundsFromCoordinates(bounds, item);
+  }
+}
+
+function expandBoundsFromGeometry(bounds, geometry) {
+  if (!geometry) {
+    return;
+  }
+
+  if (geometry.type === 'GeometryCollection') {
+    for (const item of geometry.geometries ?? []) {
+      expandBoundsFromGeometry(bounds, item);
+    }
+    return;
+  }
+
+  expandBoundsFromCoordinates(bounds, geometry.coordinates);
+}
+
+function computeGeoJSONBounds(geojson) {
+  const bounds = [Infinity, Infinity, -Infinity, -Infinity];
+
+  if (!geojson) {
+    return null;
+  }
+
+  if (geojson.type === 'FeatureCollection') {
+    for (const feature of geojson.features ?? []) {
+      expandBoundsFromGeometry(bounds, feature.geometry);
+    }
+  } else if (geojson.type === 'Feature') {
+    expandBoundsFromGeometry(bounds, geojson.geometry);
+  } else {
+    expandBoundsFromGeometry(bounds, geojson);
+  }
+
+  return bounds.every(Number.isFinite) ? bounds : null;
+}
+
+function createPointFeatureCollection(lngLat) {
+  return {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: {},
+        geometry: {
+          type: 'Point',
+          coordinates: lngLat,
+        },
+      },
+    ],
+  };
+}
+
 function zoomToAltitude(camera, zoom, latitudeDeg, viewportHeightPx = 900) {
   const metersPerPixel = (156543.03392 * Math.cos((latitudeDeg * Math.PI) / 180)) / 2 ** zoom;
   const safeFovDeg = Number.isFinite(camera.fov) && camera.fov > 0 ? camera.fov : 45;
   const fovRad = (safeFovDeg * Math.PI) / 180;
   const altitude = (metersPerPixel * viewportHeightPx) / (2 * Math.tan(fovRad / 2));
   return Number.isFinite(altitude) && altitude > 0 ? altitude : 1200;
+}
+
+function altitudeToZoom(camera, altitude, latitudeDeg, viewportHeightPx = 900) {
+  const safeAltitude = Math.max(1, altitude);
+  const safeViewportHeight = Math.max(1, viewportHeightPx);
+  const safeFovDeg = Number.isFinite(camera.fov) && camera.fov > 0 ? camera.fov : 45;
+  const fovRad = (safeFovDeg * Math.PI) / 180;
+  const metersPerPixel = (safeAltitude * 2 * Math.tan(fovRad / 2)) / safeViewportHeight;
+  const latitudeFactor = Math.max(0.000001, Math.cos((latitudeDeg * Math.PI) / 180));
+  const zoom = Math.log2((156543.03392 * latitudeFactor) / Math.max(metersPerPixel, 0.000001));
+  return clamp(zoom, 0, 22);
 }
 
 function buildHomeCamera(target, altitude, pitchDeg = 0, bearingDeg = 0) {
@@ -657,6 +825,172 @@ function createTerrainLayer(elevationConfig, extent, crs) {
   });
 }
 
+async function createMinimap({ mainInstance, mainCrs, controls, maskLayerConfig }) {
+  const minimapContainer = document.getElementById('minimap');
+  if (!minimapContainer) {
+    return null;
+  }
+
+  const toLngLat = coordinates => projectCoordinates(coordinates, mainCrs, 'EPSG:4326');
+  const getMaskBoundsArray = () => (
+    maskBounds
+      ? [
+          [maskBounds[0], maskBounds[1]],
+          [maskBounds[2], maskBounds[3]],
+        ]
+      : null
+  );
+  const getSynchronizedView = () => {
+    const center = toLngLat([controls.target.x, controls.target.y]);
+    const cameraDistance = mainInstance.view.camera.position.distanceTo(controls.target);
+    const viewportHeight = mainInstance.domElement.clientHeight || window.innerHeight || 900;
+    const zoom = clamp(
+      altitudeToZoom(mainInstance.view.camera, cameraDistance, center[1], viewportHeight) - MINIMAP_ZOOM_OFFSET,
+      0,
+      22,
+    );
+
+    return { center, zoom };
+  };
+  const initialView = getSynchronizedView();
+
+  let maskGeoJson = null;
+  let maskBounds = null;
+  if (maskLayerConfig?.type === 'geojson_mask' && typeof maskLayerConfig.url === 'string') {
+    try {
+      const maskResponse = await fetch(new URL(maskLayerConfig.url, window.location.href));
+      if (!maskResponse.ok) {
+        throw new Error(`Cannot load mask: ${maskResponse.status} ${maskResponse.statusText}`);
+      }
+
+      const rawGeoJson = await maskResponse.json();
+      const maskProjection = maskLayerConfig.data_projection ?? mainCrs;
+      maskGeoJson = transformGeoJSONToCrs(rawGeoJson, maskProjection, 'EPSG:4326');
+      maskBounds = computeGeoJSONBounds(maskGeoJson);
+    } catch (error) {
+      console.warn('Failed to initialize minimap mask overlay', error);
+    }
+  }
+
+  const minimap = new maplibregl.Map({
+    container: minimapContainer,
+    style: MINIMAP_OSM_STYLE,
+    center: initialView.center,
+    zoom: initialView.zoom,
+    attributionControl: false,
+    dragRotate: false,
+    pitchWithRotate: false,
+    renderWorldCopies: false,
+  });
+
+  minimap.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+  minimap.dragPan.disable();
+  minimap.boxZoom.disable();
+  minimap.doubleClickZoom.disable();
+  minimap.keyboard.disable();
+  minimap.scrollZoom.disable();
+  minimap.touchZoomRotate.disableRotation();
+  let hasAppliedInitialMaskFit = false;
+
+  const synchronizeView = () => {
+    if (!minimap.isStyleLoaded()) {
+      return;
+    }
+
+    const nextView = getSynchronizedView();
+    const currentCenter = minimap.getCenter();
+    const centerChanged = (
+      Math.abs(currentCenter.lng - nextView.center[0]) > 0.000001
+      || Math.abs(currentCenter.lat - nextView.center[1]) > 0.000001
+    );
+    const zoomChanged = Math.abs(minimap.getZoom() - nextView.zoom) > 0.01;
+
+    if (centerChanged || zoomChanged) {
+      minimap.jumpTo({
+        center: nextView.center,
+        zoom: nextView.zoom,
+      });
+    }
+
+    const centerSource = minimap.getSource(MINIMAP_CENTER_SOURCE_ID);
+    if (centerSource) {
+      centerSource.setData(createPointFeatureCollection(nextView.center));
+    }
+  };
+
+  minimap.on('load', () => {
+    minimap.addSource(MINIMAP_CENTER_SOURCE_ID, {
+      type: 'geojson',
+      data: createPointFeatureCollection(initialView.center),
+    });
+
+    minimap.addLayer({
+      id: 'minimap-center-ring',
+      type: 'circle',
+      source: MINIMAP_CENTER_SOURCE_ID,
+      paint: {
+        'circle-radius': 7,
+        'circle-color': '#ffffff',
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#1d4ed8',
+      },
+    });
+    minimap.addLayer({
+      id: 'minimap-center-dot',
+      type: 'circle',
+      source: MINIMAP_CENTER_SOURCE_ID,
+      paint: {
+        'circle-radius': 3.5,
+        'circle-color': '#1d4ed8',
+      },
+    });
+
+    if (maskGeoJson) {
+      minimap.addSource(MINIMAP_MASK_SOURCE_ID, {
+        type: 'geojson',
+        data: maskGeoJson,
+      });
+      minimap.addLayer({
+        id: 'minimap-mask-fill',
+        type: 'fill',
+        source: MINIMAP_MASK_SOURCE_ID,
+        paint: {
+          'fill-color': '#2563eb',
+          'fill-opacity': 0.08,
+        },
+      });
+      minimap.addLayer({
+        id: 'minimap-mask-outline',
+        type: 'line',
+        source: MINIMAP_MASK_SOURCE_ID,
+        paint: {
+          'line-color': '#1d4ed8',
+          'line-width': 2,
+        },
+      });
+    }
+
+    const minimapBounds = getMaskBoundsArray();
+    if (minimapBounds) {
+      hasAppliedInitialMaskFit = true;
+      minimap.fitBounds(minimapBounds, {
+        padding: 18,
+        duration: 0,
+        maxZoom: 18,
+      });
+    }
+  });
+
+  mainInstance.addEventListener('after-camera-update', () => {
+    if (!hasAppliedInitialMaskFit) {
+      return;
+    }
+    synchronizeView();
+  });
+
+  return minimap;
+}
+
 async function bootstrap() {
   const config = await loadConfig();
 
@@ -1024,6 +1358,12 @@ async function bootstrap() {
   controls.maxPolarAngle = Math.PI / 2.05;
   controls.saveState();
   instance.view.setControls(controls);
+  await createMinimap({
+    mainInstance: instance,
+    mainCrs: mapConfig.crs,
+    controls,
+    maskLayerConfig: mapConfig.mask_layer,
+  });
   createMeasurementWidget(instance);
   let latestClickRequestId = 0;
 
