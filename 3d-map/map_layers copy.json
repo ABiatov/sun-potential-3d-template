@@ -128,6 +128,24 @@
           "max": 2850
         }
       }
+    },
+    {
+      "id": "point-cloud",
+      "name": "Point Cloud",
+      "type": "copc_point_cloud",
+      "url": "./data/pointcloud.copc.laz",
+      "channels": [0, 1, 2],
+      "is_active": false,
+      "is_masked": false,
+      "z_order": 4,
+      "style_config": {
+        "attribute": "Color",
+        "point_size": 0,
+        "subdivision_threshold": 1,
+        "decimate": 1,
+        "enable_workers": true,
+        "compress_colors_to_8bit": true
+      }
     }
   ]
 }

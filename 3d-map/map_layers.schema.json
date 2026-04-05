@@ -113,6 +113,8 @@
           },
           "is_active": { "type": "boolean" },
           "is_masked": { "type": "boolean" },
+          "is_clickable": { "type": "boolean" },
+          "layer_units": { "type": "string" },
           "z_order": { "type": "integer" },
           "style_config": {
             "type": "object",

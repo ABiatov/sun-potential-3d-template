@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@giro3d/giro3d": "^2.0.0-dev",
+    "geotiff": "^3.0.2",
     "proj4": "^2.19.10",
     "three": "^0.170.0"
   },

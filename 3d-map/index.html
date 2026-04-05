@@ -9,6 +9,37 @@
   <body>
     <div id="view"></div>
 
+    <aside id="click-popup" class="click-popup" hidden aria-live="polite">
+      <div class="click-popup-header">
+        <h2 id="click-popup-title">Layer value</h2>
+        <button id="click-popup-close" class="click-popup-close" type="button" aria-label="Close popup">
+          ×
+        </button>
+      </div>
+
+      <label id="click-popup-select-label" class="click-popup-select-label" for="click-popup-select" hidden>
+        Layer
+      </label>
+      <select id="click-popup-select" hidden></select>
+
+      <p class="click-popup-meta">Value</p>
+      <div class="click-popup-value-row">
+        <p id="click-popup-value" class="click-popup-value">-</p>
+        <span id="click-popup-units" class="click-popup-units" hidden></span>
+      </div>
+
+      <div id="click-popup-generation" class="click-popup-generation" hidden>
+        <p class="click-popup-meta">Annual generation forecast</p>
+        <div class="click-popup-generation-row">
+          <p id="click-popup-generation-value" class="click-popup-generation-value">-</p>
+          <span id="click-popup-generation-units" class="click-popup-units">kWh/m²/year</span>
+        </div>
+        <p class="click-popup-hint">
+          Formula: POA × 0.22 efficiency × 0.8 losses
+        </p>
+      </div>
+    </aside>
+
     <div class="map-ui" aria-label="Layer controls">
       <h2>Layers</h2>
 

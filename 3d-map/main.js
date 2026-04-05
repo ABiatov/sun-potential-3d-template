@@ -1,11 +1,13 @@
+import { fromUrl as openGeoTIFF } from 'geotiff';
 import proj4 from 'proj4';
 import { GeoJSON } from 'ol/format.js';
 import { Fill, Style } from 'ol/style.js';
-import { Color, Vector3 } from 'three';
+import { Color, Vector2, Vector3 } from 'three';
 import { MapControls } from 'three/examples/jsm/controls/MapControls.js';
 
 import ColorMap from '@giro3d/giro3d/core/ColorMap.js';
 import ColorMapMode from '@giro3d/giro3d/core/ColorMapMode.js';
+import Coordinates from '@giro3d/giro3d/core/geographic/Coordinates.js';
 import CoordinateSystem from '@giro3d/giro3d/core/geographic/CoordinateSystem.js';
 import Extent from '@giro3d/giro3d/core/geographic/Extent.js';
 import Instance from '@giro3d/giro3d/core/Instance.js';
@@ -16,6 +18,7 @@ import MaskLayer, { MaskMode } from '@giro3d/giro3d/core/layer/MaskLayer.js';
 import Map from '@giro3d/giro3d/entities/Map.js';
 import { MapLightingMode } from '@giro3d/giro3d/entities/MapLightingOptions.js';
 import PointCloud from '@giro3d/giro3d/entities/PointCloud.js';
+import Shape from '@giro3d/giro3d/entities/Shape.js';
 import DrawTool, { conditions } from '@giro3d/giro3d/interactions/DrawTool.js';
 import COPCSource from '@giro3d/giro3d/sources/COPCSource.js';
 import GeoTIFFSource from '@giro3d/giro3d/sources/GeoTIFFSource.js';
@@ -27,6 +30,13 @@ const PALETTE_STOPS = {
   inferno: ['#000004', '#1b0c41', '#4a0c6b', '#781c6d', '#a52c60', '#cf4446', '#ed6925', '#fb9b06', '#f7d13d', '#fcffa4'],
 };
 const LAZ_PERF_WASM_URL = new URL('./assets/wasm/laz-perf.wasm', import.meta.url);
+const CLICK_SAMPLE_FORMATTER = new Intl.NumberFormat(undefined, {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 3,
+});
+const GENERATION_EFFICIENCY = 0.22;
+const GENERATION_LOSSES = 0.8;
+const GENERATION_FORECAST_LAYER_IDS = new Set(['annual-poa', 'poa-sweet-spots']);
 let lazPerfWasmBinaryPromise = null;
 
 function makeGradientFromStops(stops, shades = 256) {
@@ -123,6 +133,217 @@ function parseMaskMode(value) {
 
 function layerZOrderValue(layerConfig) {
   return Number.isFinite(layerConfig.z_order) ? layerConfig.z_order : 0;
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function formatClickSampleValue(value) {
+  return Number.isFinite(value) ? CLICK_SAMPLE_FORMATTER.format(value) : 'No data';
+}
+
+function getAnnualGenerationForecast(result) {
+  if (!GENERATION_FORECAST_LAYER_IDS.has(result.layerId)) {
+    return null;
+  }
+  if (!Number.isFinite(result.value)) {
+    return null;
+  }
+
+  return result.value * GENERATION_EFFICIENCY * GENERATION_LOSSES;
+}
+
+function createDirectCogSampler(layerConfig) {
+  const resolvedUrl = new URL(layerConfig.url, window.location.href).toString();
+  const sampleIndex = layerConfig.channels?.[0] ?? 0;
+  const configuredNoData = Number.isFinite(layerConfig.style_config?.nodata)
+    ? layerConfig.style_config.nodata
+    : null;
+  let statePromise = null;
+
+  const initialize = async () => {
+    const tiff = await openGeoTIFF(resolvedUrl);
+    const image = await tiff.getImage(0);
+    const imageNoData = Number(image.getGDALNoData());
+
+    return {
+      image,
+      bbox: image.getBoundingBox(),
+      width: image.getWidth(),
+      height: image.getHeight(),
+      nodata: configuredNoData ?? (Number.isFinite(imageNoData) ? imageNoData : null),
+    };
+  };
+
+  return {
+    async sampleAt(coordinates) {
+      statePromise ??= initialize();
+      const state = await statePromise;
+      const [minX, minY, maxX, maxY] = state.bbox;
+      const { x, y } = coordinates;
+
+      if (x < minX || x > maxX || y < minY || y > maxY) {
+        return null;
+      }
+
+      const spanX = maxX - minX;
+      const spanY = maxY - minY;
+      if (!(spanX > 0) || !(spanY > 0)) {
+        return null;
+      }
+
+      const pixelX = clamp(Math.floor(((x - minX) / spanX) * state.width), 0, state.width - 1);
+      const pixelY = clamp(Math.floor(((maxY - y) / spanY) * state.height), 0, state.height - 1);
+
+      const rasters = await state.image.readRasters({
+        window: [pixelX, pixelY, pixelX + 1, pixelY + 1],
+        samples: [sampleIndex],
+        fillValue: state.nodata ?? undefined,
+        interleave: false,
+      });
+
+      const channel = Array.isArray(rasters) ? rasters[0] : rasters;
+      if (!channel || channel.length === 0) {
+        return null;
+      }
+
+      const value = channel[0];
+      if (!Number.isFinite(value)) {
+        return null;
+      }
+      if (state.nodata != null && value === state.nodata) {
+        return null;
+      }
+
+      return value;
+    },
+  };
+}
+
+function createClickPopupController(onHide = () => {}) {
+  const popup = document.getElementById('click-popup');
+  const title = document.getElementById('click-popup-title');
+  const value = document.getElementById('click-popup-value');
+  const units = document.getElementById('click-popup-units');
+  const generationBlock = document.getElementById('click-popup-generation');
+  const generationValue = document.getElementById('click-popup-generation-value');
+  const selectLabel = document.getElementById('click-popup-select-label');
+  const select = document.getElementById('click-popup-select');
+  const closeButton = document.getElementById('click-popup-close');
+  let currentResults = [];
+
+  const setPosition = (clientX, clientY) => {
+    const margin = 16;
+    const popupWidth = popup.offsetWidth || 280;
+    const popupHeight = popup.offsetHeight || 140;
+    const left = clamp(clientX + 16, margin, window.innerWidth - popupWidth - margin);
+    const top = clamp(clientY + 16, margin, window.innerHeight - popupHeight - margin);
+
+    popup.style.left = `${left}px`;
+    popup.style.top = `${top}px`;
+  };
+
+  const renderResult = index => {
+    const result = currentResults[index];
+    if (!result) {
+      return;
+    }
+
+    title.textContent = result.layerName;
+    value.textContent = formatClickSampleValue(result.value);
+    units.textContent = result.layerUnits ?? '';
+    units.hidden = !result.layerUnits;
+    const generationForecast = getAnnualGenerationForecast(result);
+    generationValue.textContent = formatClickSampleValue(generationForecast);
+    generationBlock.hidden = generationForecast == null;
+    select.value = result.layerId;
+  };
+
+  const hide = () => {
+    popup.hidden = true;
+    currentResults = [];
+    select.innerHTML = '';
+  };
+
+  const showLoading = (clientX, clientY) => {
+    popup.hidden = false;
+    title.textContent = 'Loading values';
+    value.textContent = 'Reading COG...';
+    generationBlock.hidden = true;
+    select.hidden = true;
+    selectLabel.hidden = true;
+    setPosition(clientX, clientY);
+  };
+
+  const showResults = (results, clientX, clientY) => {
+    currentResults = results;
+    select.innerHTML = '';
+
+    for (const result of results) {
+      const option = document.createElement('option');
+      option.value = result.layerId;
+      option.textContent = result.layerName;
+      select.appendChild(option);
+    }
+
+    const hasMultipleResults = results.length > 1;
+    select.hidden = !hasMultipleResults;
+    selectLabel.hidden = !hasMultipleResults;
+    popup.hidden = false;
+    renderResult(0);
+    setPosition(clientX, clientY);
+  };
+
+  select.addEventListener('change', event => {
+    const index = currentResults.findIndex(result => result.layerId === event.target.value);
+    if (index >= 0) {
+      renderResult(index);
+    }
+  });
+
+  closeButton.addEventListener('click', () => {
+    hide();
+    onHide();
+  });
+
+  return {
+    hide,
+    showLoading,
+    showResults,
+  };
+}
+
+function createClickPointer(maxExtentSize) {
+  const marker = new Shape({
+    color: '#ef4444',
+    showLine: false,
+    showVertices: true,
+    showFloorVertices: false,
+    showFloorLine: false,
+    showVerticalLines: false,
+    showVertexLabels: false,
+    showSegmentLabels: false,
+    showLineLabel: false,
+    showSurface: false,
+    showSurfaceLabel: false,
+    borderWidth: 2,
+    vertexRadius: clamp(maxExtentSize * 0.0035, 8, 14),
+  });
+  marker.visible = false;
+  marker.renderOrder = 3000;
+
+  return {
+    object: marker,
+    hide() {
+      marker.visible = false;
+      marker.setPoints([]);
+    },
+    setPosition(point) {
+      marker.visible = true;
+      marker.setPoints([point.clone()]);
+    },
+  };
 }
 
 function createLayerSwitch(container, layerConfig, checked, onToggle) {
@@ -440,14 +661,37 @@ async function bootstrap() {
     });
   const layersListEl = document.getElementById('layers-list');
   const runtimeLayers = [];
+  const queryableLayers = [];
   const switchDescriptors = [];
   const layerVisibilityState = new globalThis.Map();
   let maskLayer = null;
   const hillshadingSwitch = document.getElementById('hillshading-toggle');
+  const clickPointer = createClickPointer(maxExtentSize);
+  instance.add(clickPointer.object);
+  const hideClickSelection = () => {
+    clickPopup.hide();
+    clickPointer.hide();
+  };
+  const clickPopup = createClickPopupController(() => {
+    clickPointer.hide();
+    notifySceneChanged();
+  });
   const notifySceneChanged = () => {
     instance.notifyChange(maskedMap);
     instance.notifyChange(unmaskedMap);
     instance.notifyChange();
+  };
+  const registerQueryableLayer = ({ layerConfig, originalIndex, isEnabled }) => {
+    if (layerConfig.type !== 'cog_raster' || layerConfig.is_clickable !== true) {
+      return;
+    }
+
+    queryableLayers.push({
+      layerConfig,
+      originalIndex,
+      isEnabled,
+      sampler: createDirectCogSampler(layerConfig),
+    });
   };
 
   const updateMaskVisibility = () => {
@@ -495,6 +739,11 @@ async function bootstrap() {
           instance.notifyChange(unmaskedMap);
         },
       });
+      registerQueryableLayer({
+        layerConfig,
+        originalIndex,
+        isEnabled: () => targetTerrainLayer.colorMap?.active === true,
+      });
       continue;
     }
 
@@ -540,7 +789,7 @@ async function bootstrap() {
       }
 
       layerVisibilityState.set(layerConfig.id, pointCloud.visible);
-      runtimeLayers.push({ layerConfig, layer: pointCloud, map: null });
+      runtimeLayers.push({ layerConfig, layer: pointCloud, map: null, originalIndex });
       switchDescriptors.push({
         layerConfig,
         originalIndex,
@@ -574,7 +823,7 @@ async function bootstrap() {
       layer.visible = layerConfig.is_active !== false;
       layerVisibilityState.set(layerConfig.id, layer.visible);
       targetMap.addLayer(layer);
-      runtimeLayers.push({ layerConfig, layer, map: targetMap });
+      runtimeLayers.push({ layerConfig, layer, map: targetMap, originalIndex });
       switchDescriptors.push({
         layerConfig,
         originalIndex,
@@ -585,6 +834,11 @@ async function bootstrap() {
           updateMaskVisibility();
           notifySceneChanged();
         },
+      });
+      registerQueryableLayer({
+        layerConfig,
+        originalIndex,
+        isEnabled: () => layer.visible,
       });
       continue;
     }
@@ -602,7 +856,7 @@ async function bootstrap() {
     layer.visible = layerConfig.is_active !== false;
     layerVisibilityState.set(layerConfig.id, layer.visible);
     targetMap.addLayer(layer);
-    runtimeLayers.push({ layerConfig, layer, map: targetMap });
+    runtimeLayers.push({ layerConfig, layer, map: targetMap, originalIndex });
     switchDescriptors.push({
       layerConfig,
       originalIndex,
@@ -613,6 +867,11 @@ async function bootstrap() {
         updateMaskVisibility();
         notifySceneChanged();
       },
+    });
+    registerQueryableLayer({
+      layerConfig,
+      originalIndex,
+      isEnabled: () => layer.visible,
     });
   }
 
@@ -670,6 +929,95 @@ async function bootstrap() {
   controls.saveState();
   instance.view.setControls(controls);
   createMeasurementWidget(instance);
+  let latestClickRequestId = 0;
+
+  const pickMapCoordinates = event => {
+    const picked = instance.pickObjectsAt(event, {
+      where: [maskedMap, unmaskedMap],
+      limit: 4,
+      sortByDistance: true,
+    });
+    const hit = picked.find(result => result?.point != null);
+    if (!hit) {
+      return null;
+    }
+
+    return {
+      coordinates: new Coordinates(crs, hit.point.x, hit.point.y, hit.point.z),
+      point: hit.point.clone(),
+    };
+  };
+
+  const sampleQueryableLayersAt = async coordinates => {
+    const activeQueryableLayers = queryableLayers
+      .filter(entry => entry.isEnabled())
+      .sort((left, right) => {
+        const zDiff = layerZOrderValue(right.layerConfig) - layerZOrderValue(left.layerConfig);
+        if (zDiff !== 0) {
+          return zDiff;
+        }
+        return left.originalIndex - right.originalIndex;
+      });
+
+    const samples = await Promise.all(
+      activeQueryableLayers.map(async entry => {
+        try {
+          const value = await entry.sampler.sampleAt(coordinates);
+          if (!Number.isFinite(value)) {
+            return null;
+          }
+
+          return {
+            layerId: entry.layerConfig.id,
+            layerName: entry.layerConfig.name,
+            layerUnits: entry.layerConfig.layer_units ?? '',
+            value,
+          };
+        } catch (error) {
+          console.error(`Failed to sample layer "${entry.layerConfig.id}"`, error);
+          return null;
+        }
+      }),
+    );
+
+    return samples.filter(Boolean);
+  };
+
+  instance.domElement.addEventListener('click', async event => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    const requestId = ++latestClickRequestId;
+    const pickedLocation = pickMapCoordinates(event);
+    if (!pickedLocation) {
+      hideClickSelection();
+      return;
+    }
+
+    const hasActiveQueryableLayers = queryableLayers.some(entry => entry.isEnabled());
+    if (!hasActiveQueryableLayers) {
+      hideClickSelection();
+      return;
+    }
+
+    clickPointer.setPosition(pickedLocation.point);
+    clickPopup.showLoading(event.clientX, event.clientY);
+    notifySceneChanged();
+
+    const results = await sampleQueryableLayersAt(pickedLocation.coordinates);
+    if (requestId !== latestClickRequestId) {
+      return;
+    }
+
+    if (results.length === 0) {
+      hideClickSelection();
+      notifySceneChanged();
+      return;
+    }
+
+    clickPopup.showResults(results, event.clientX, event.clientY);
+  });
 
   const applyZoomStep = zoomFactor => {
     const offset = camera.position.clone().sub(controls.target);
@@ -731,6 +1079,13 @@ async function bootstrap() {
 
   document.getElementById('zoom-out').addEventListener('click', () => {
     applyZoomStep(1.25);
+  });
+
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      hideClickSelection();
+      notifySceneChanged();
+    }
   });
 
   updateMaskVisibility();
