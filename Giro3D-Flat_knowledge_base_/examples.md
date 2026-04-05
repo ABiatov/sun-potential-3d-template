@@ -18175,7 +18175,7 @@ const instance = new Instance({
 });
 
 const apiKey =
-    '_____________________';
+    'pk.eyJ1IjoiZ2lybzNkIiwiYSI6ImNtZ3Q0NDNlNTAwY2oybHI3Ym1kcW03YmoifQ.Zl7_KZiAhqWSPjlkKDKYnQ';
 
 const map = new Map({ extent });
 

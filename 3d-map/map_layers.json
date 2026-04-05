@@ -12,16 +12,8 @@
     "elevation_no_colormap_background_color": "#ffffff",
     "terrain_enabled": true,
     "layer_offsets": {
-      "osm_map_z": 0,
       "overlay_terrain_on_z": 0.2,
       "overlay_terrain_off_z": 6
-    },
-    "base_layer": {
-      "id": "osm",
-      "name": "OpenStreetMap",
-      "type": "osm",
-      "is_active": true,
-      "z_order": 0
     },
     "mask_layer": {
       "id": "mask",
@@ -95,9 +87,9 @@
       "type": "cog_raster",
       "url": "./data/poa.tif",
       "channels": [0],
-      "is_active": true,
+      "is_active": false,
       "is_masked": true,
-      "z_order": 4,
+      "z_order": 5,
       "style_config": {
         "opacity": 1,
         "nodata": -9999,
@@ -106,6 +98,47 @@
           "min": 1000,
           "max": 2750
         }
+      }
+    },
+    {
+      "id": "poa-sweet-spots",
+      "name": "POA Sweet Spots",
+      "type": "cog_raster",
+      "url": "./data/poa_sweet_spots.tif",
+      "channels": [0],
+      "is_active": true,
+      "is_masked": true,
+      "z_order": 7,
+      "style_config": {
+        "opacity": 1,
+        "nodata": -9999,
+        "palette": [
+          { "value": 2000, "color": "#ffffb2" },
+          { "value": 2425, "color": "#fd8d3c" },
+          { "value": 2850, "color": "#bd0026" }
+        ],
+        "value_range": {
+          "min": 2000,
+          "max": 2850
+        }
+      }
+    },
+    {
+      "id": "point-cloud",
+      "name": "Point Cloud",
+      "type": "copc_point_cloud",
+      "url": "./data/pointcloud.copc.laz",
+      "channels": [0, 1, 2],
+      "is_active": false,
+      "is_masked": false,
+      "z_order": 4,
+      "style_config": {
+        "attribute": "Color",
+        "point_size": 0,
+        "subdivision_threshold": 1,
+        "decimate": 1,
+        "enable_workers": true,
+        "compress_colors_to_8bit": true
       }
     }
   ]

@@ -48,12 +48,16 @@
         </div>
       </section>
 
-
-      <button id="home-button" class="home-button" type="button" aria-label="Home" title="Home">
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M12 3 3 10.5l1.4 1.7L6 10.9V21h12V10.9l1.6 1.3 1.4-1.7L12 3zm4 16h-3v-5h-2v5H8v-9.8l4-3.3 4 3.3V19z" />
-        </svg>
-      </button>
+      <div class="view-actions" aria-label="Map navigation">
+        <button id="home-button" class="icon-button" type="button" aria-label="Home" title="Home">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 3 3 10.5l1.4 1.7L6 10.9V21h12V10.9l1.6 1.3 1.4-1.7L12 3zm4 16h-3v-5h-2v5H8v-9.8l4-3.3 4 3.3V19z" />
+          </svg>
+        </button>
+        <button id="zoom-in" class="icon-button" type="button" aria-label="Zoom in" title="Zoom in">+</button>
+        <button id="zoom-out" class="icon-button" type="button" aria-label="Zoom out" title="Zoom out">-</button>
+      </div>
+      <p class="view-actions-hint">To rotate the map, use the right mouse button.</p>
     </div>
 
     <script type="module" src="./main.js"></script>

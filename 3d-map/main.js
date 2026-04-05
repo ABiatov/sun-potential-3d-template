@@ -1,6 +1,5 @@
 import proj4 from 'proj4';
 import { GeoJSON } from 'ol/format.js';
-import OSM from 'ol/source/OSM.js';
 import { Fill, Style } from 'ol/style.js';
 import { Color, Vector3 } from 'three';
 import { MapControls } from 'three/examples/jsm/controls/MapControls.js';
@@ -16,15 +15,19 @@ import ElevationLayer from '@giro3d/giro3d/core/layer/ElevationLayer.js';
 import MaskLayer, { MaskMode } from '@giro3d/giro3d/core/layer/MaskLayer.js';
 import Map from '@giro3d/giro3d/entities/Map.js';
 import { MapLightingMode } from '@giro3d/giro3d/entities/MapLightingOptions.js';
+import PointCloud from '@giro3d/giro3d/entities/PointCloud.js';
 import DrawTool, { conditions } from '@giro3d/giro3d/interactions/DrawTool.js';
+import COPCSource from '@giro3d/giro3d/sources/COPCSource.js';
 import GeoTIFFSource from '@giro3d/giro3d/sources/GeoTIFFSource.js';
-import TiledImageSource from '@giro3d/giro3d/sources/TiledImageSource.js';
+import { setLazPerfWasmBinary } from '@giro3d/giro3d/sources/las/config.js';
 import VectorSource from '@giro3d/giro3d/sources/VectorSource.js';
 
 const PALETTE_STOPS = {
   turbo: ['#30123b', '#4145ab', '#469ee8', '#42d5bb', '#a3e146', '#f9c932', '#ef6a18', '#7a0403'],
   inferno: ['#000004', '#1b0c41', '#4a0c6b', '#781c6d', '#a52c60', '#cf4446', '#ed6925', '#fb9b06', '#f7d13d', '#fcffa4'],
 };
+const LAZ_PERF_WASM_URL = new URL('./assets/wasm/laz-perf.wasm', import.meta.url);
+let lazPerfWasmBinaryPromise = null;
 
 function makeGradientFromStops(stops, shades = 256) {
   const colors = [];
@@ -40,7 +43,7 @@ function makeGradientFromStops(stops, shades = 256) {
   }
 
   return colors;
-}
+} 
 
 function makeColorMapColors(styleConfig = {}) {
   if (Array.isArray(styleConfig.palette) && styleConfig.palette.length >= 2) {
@@ -50,6 +53,23 @@ function makeColorMapColors(styleConfig = {}) {
 
   const rampName = styleConfig.colormap_name ?? 'turbo';
   return makeGradientFromStops(PALETTE_STOPS[rampName] ?? PALETTE_STOPS.turbo);
+}
+
+async function ensureLazPerfWasmBinary() {
+  if (!lazPerfWasmBinaryPromise) {
+    lazPerfWasmBinaryPromise = fetch(LAZ_PERF_WASM_URL)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`Cannot load laz-perf.wasm: ${response.status} ${response.statusText}`);
+        }
+        return response.arrayBuffer();
+      })
+      .then(binary => {
+        setLazPerfWasmBinary(binary);
+      });
+  }
+
+  return lazPerfWasmBinaryPromise;
 }
 
 function lonLatToProjected(center, fromCrs, toCrs) {
@@ -132,7 +152,8 @@ function createMeasurementWidget(instance) {
   const tool = new DrawTool({ instance });
   const shapes = [];
   const numberFormat = new Intl.NumberFormat(undefined, {
-    maximumFractionDigits: 2,
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
   });
   const options = {
     lengthUnit: 'm',
@@ -151,10 +172,10 @@ function createMeasurementWidget(instance) {
   const formatLength = ({ length }) => {
     switch (options.lengthUnit) {
       case 'ft':
-        return `${numberFormat.format(Math.round(length * 3.28084))} ft`;
+        return `${numberFormat.format(length * 3.28084)} ft`;
       case 'm':
       default:
-        return `${numberFormat.format(Math.round(length))} m`;
+        return `${numberFormat.format(length)} m`;
     }
   };
 
@@ -169,7 +190,7 @@ function createMeasurementWidget(instance) {
         if (area > 1_000_000) {
           return `${numberFormat.format(area / 1_000_000)} km²`;
         }
-        return `${numberFormat.format(Math.round(area))} m²`;
+        return `${numberFormat.format(area)} m²`;
     }
   };
 
@@ -354,30 +375,6 @@ async function bootstrap() {
   const overlayZTerrainOff = Number.isFinite(layerOffsets.overlay_terrain_off_z)
     ? Math.max(layerOffsets.overlay_terrain_off_z, minOverlayZTerrainOff)
     : minOverlayZTerrainOff;
-  const osmMapZ = Number.isFinite(layerOffsets.osm_map_z) ? layerOffsets.osm_map_z : 0;
-
-  const osmMap = new Map({
-    extent,
-    terrain: { enabled: false },
-    lighting: { enabled: false },
-    backgroundOpacity: 0,
-  });
-  osmMap.renderOrder = 0;
-  osmMap.object3d.position.z = osmMapZ;
-  instance.add(osmMap);
-
-  const baseLayerConfig = mapConfig.base_layer;
-  if (baseLayerConfig?.is_active !== false && baseLayerConfig?.type === 'osm') {
-    const osmBaseLayer = new ColorLayer({
-      name: baseLayerConfig.name ?? 'OpenStreetMap',
-      extent,
-      userData: { z_order: layerZOrderValue(baseLayerConfig) },
-      source: new TiledImageSource({
-        source: new OSM(),
-      }),
-    });
-    osmMap.addLayer(osmBaseLayer);
-  }
 
   const hillshadingConfig = mapConfig.hillshading ?? {};
   const hillshadingEnabled = hillshadingConfig.enabled !== false;
@@ -447,6 +444,11 @@ async function bootstrap() {
   const layerVisibilityState = new globalThis.Map();
   let maskLayer = null;
   const hillshadingSwitch = document.getElementById('hillshading-toggle');
+  const notifySceneChanged = () => {
+    instance.notifyChange(maskedMap);
+    instance.notifyChange(unmaskedMap);
+    instance.notifyChange();
+  };
 
   const updateMaskVisibility = () => {
     const hasVisibleLayer = Array.from(layerVisibilityState.values()).some(Boolean);
@@ -496,6 +498,63 @@ async function bootstrap() {
       continue;
     }
 
+    if (layerConfig.type === 'copc_point_cloud') {
+      await ensureLazPerfWasmBinary();
+
+      const pointCloud = new PointCloud({
+        source: new COPCSource({
+          url: layerConfig.url,
+          decimate: styleConfig.decimate,
+          enableWorkers: styleConfig.enable_workers,
+          compressColorsTo8Bit: styleConfig.compress_colors_to_8bit,
+        }),
+      });
+
+      if (Number.isFinite(styleConfig.point_size)) {
+        pointCloud.pointSize = styleConfig.point_size;
+      }
+      if (Number.isFinite(styleConfig.subdivision_threshold)) {
+        pointCloud.subdivisionThreshold = styleConfig.subdivision_threshold;
+      }
+      if (Number.isFinite(layerConfig.z_order)) {
+        pointCloud.object3d.renderOrder = 1100 + layerConfig.z_order;
+      }
+
+      pointCloud.visible = layerConfig.is_active !== false;
+
+      await instance.add(pointCloud);
+
+      pointCloud.setColoringMode('attribute');
+
+      const rgbAttribute = styleConfig.attribute ?? 'Color';
+      const hasRequestedAttribute = pointCloud
+        .getSupportedAttributes()
+        .some(attribute => attribute.name === rgbAttribute);
+
+      if (hasRequestedAttribute) {
+        pointCloud.setActiveAttribute(rgbAttribute);
+      } else {
+        console.warn(
+          `Point cloud layer "${layerConfig.id}" does not support attribute "${rgbAttribute}".`,
+        );
+      }
+
+      layerVisibilityState.set(layerConfig.id, pointCloud.visible);
+      runtimeLayers.push({ layerConfig, layer: pointCloud, map: null });
+      switchDescriptors.push({
+        layerConfig,
+        originalIndex,
+        checked: pointCloud.visible,
+        onToggle: checked => {
+          layerVisibilityState.set(layerConfig.id, checked);
+          pointCloud.visible = checked;
+          updateMaskVisibility();
+          notifySceneChanged();
+        },
+      });
+      continue;
+    }
+
     const source = new GeoTIFFSource({
       url: layerConfig.url,
       crs,
@@ -524,8 +583,7 @@ async function bootstrap() {
           layerVisibilityState.set(layerConfig.id, checked);
           layer.visible = checked;
           updateMaskVisibility();
-          instance.notifyChange(maskedMap);
-          instance.notifyChange(unmaskedMap);
+          notifySceneChanged();
         },
       });
       continue;
@@ -553,8 +611,7 @@ async function bootstrap() {
         layerVisibilityState.set(layerConfig.id, checked);
         layer.visible = checked;
         updateMaskVisibility();
-        instance.notifyChange(maskedMap);
-        instance.notifyChange(unmaskedMap);
+        notifySceneChanged();
       },
     });
   }
@@ -614,6 +671,27 @@ async function bootstrap() {
   instance.view.setControls(controls);
   createMeasurementWidget(instance);
 
+  const applyZoomStep = zoomFactor => {
+    const offset = camera.position.clone().sub(controls.target);
+    const currentDistance = offset.length();
+    if (!Number.isFinite(currentDistance) || currentDistance <= 0) {
+      return;
+    }
+
+    const minDistance = Number.isFinite(controls.minDistance) ? controls.minDistance : 0;
+    const maxDistance = Number.isFinite(controls.maxDistance) ? controls.maxDistance : Infinity;
+    const nextDistance = Math.min(maxDistance, Math.max(minDistance, currentDistance * zoomFactor));
+
+    if (Math.abs(nextDistance - currentDistance) < 1e-6) {
+      return;
+    }
+
+    offset.setLength(nextDistance);
+    camera.position.copy(controls.target).add(offset);
+    controls.update();
+    notifySceneChanged();
+  };
+
   const terrainSwitch = document.getElementById('terrain-deformation');
   terrainSwitch.checked = maskedMap.terrain.enabled;
   terrainSwitch.addEventListener('change', event => {
@@ -628,8 +706,7 @@ async function bootstrap() {
     };
     maskedMap.object3d.position.z = terrainEnabled ? overlayZTerrainOn : overlayZTerrainOff;
     unmaskedMap.object3d.position.z = terrainEnabled ? overlayZTerrainOn : overlayZTerrainOff;
-    instance.notifyChange(maskedMap);
-    instance.notifyChange(unmaskedMap);
+    notifySceneChanged();
   });
 
   hillshadingSwitch.checked = hillshadingEnabled;
@@ -638,21 +715,26 @@ async function bootstrap() {
     maskedMap.lighting.enabled = enabled && hillshadingIsMasked;
     unmaskedMap.lighting.enabled = enabled && !hillshadingIsMasked;
     updateMaskVisibility();
-    instance.notifyChange(maskedMap);
-    instance.notifyChange(unmaskedMap);
+    notifySceneChanged();
   });
 
   document.getElementById('home-button').addEventListener('click', () => {
     camera.position.copy(homePosition);
     controls.target.copy(homeTarget);
     controls.update();
-    instance.notifyChange(maskedMap);
-    instance.notifyChange(unmaskedMap);
+    notifySceneChanged();
+  });
+
+  document.getElementById('zoom-in').addEventListener('click', () => {
+    applyZoomStep(0.8);
+  });
+
+  document.getElementById('zoom-out').addEventListener('click', () => {
+    applyZoomStep(1.25);
   });
 
   updateMaskVisibility();
-  instance.notifyChange(maskedMap);
-  instance.notifyChange(unmaskedMap);
+  notifySceneChanged();
 
   return { instance, map: maskedMap, runtimeLayers };
 }

@@ -35,21 +35,8 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "osm_map_z": { "type": "number" },
             "overlay_terrain_on_z": { "type": "number" },
             "overlay_terrain_off_z": { "type": "number" }
-          }
-        },
-        "base_layer": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["id", "name", "type", "is_active", "z_order"],
-          "properties": {
-            "id": { "type": "string", "minLength": 1 },
-            "name": { "type": "string", "minLength": 1 },
-            "type": { "type": "string", "enum": ["osm"] },
-            "is_active": { "type": "boolean" },
-            "z_order": { "type": "integer" }
           }
         },
         "mask_layer": {
@@ -115,7 +102,7 @@
           "name": { "type": "string", "minLength": 1 },
           "type": {
             "type": "string",
-            "enum": ["cog_raster", "cog_rgb", "cog_terrain"]
+            "enum": ["cog_raster", "cog_rgb", "cog_terrain", "copc_point_cloud"]
           },
           "url": { "type": "string", "minLength": 1 },
           "channels": {
@@ -159,7 +146,13 @@
                     "color": { "type": "string", "pattern": "^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$" }
                   }
                 }
-              }
+              },
+              "attribute": { "type": "string", "minLength": 1 },
+              "point_size": { "type": "number", "minimum": 0 },
+              "subdivision_threshold": { "type": "number", "exclusiveMinimum": 0 },
+              "decimate": { "type": "integer", "minimum": 1 },
+              "enable_workers": { "type": "boolean" },
+              "compress_colors_to_8bit": { "type": "boolean" }
             }
           }
         }
