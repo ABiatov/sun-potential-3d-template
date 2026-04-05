@@ -28,11 +28,25 @@ import VectorSource from '@giro3d/giro3d/sources/VectorSource.js';
 const PALETTE_STOPS = {
   turbo: ['#30123b', '#4145ab', '#469ee8', '#42d5bb', '#a3e146', '#f9c932', '#ef6a18', '#7a0403'],
   inferno: ['#000004', '#1b0c41', '#4a0c6b', '#781c6d', '#a52c60', '#cf4446', '#ed6925', '#fb9b06', '#f7d13d', '#fcffa4'],
+  spectral_r: ['#2b83ba', '#abdda4', '#ffffbf', '#fdae61', '#d7191c'],
+  nipy_spectral: [
+    '#000000', '#2f0035', '#5d006b', '#7a008b', '#810092', '#870098',
+    '#58009f', '#2300a6', '#0000b1', '#0000c5', '#0000d9', '#0025dd',
+    '#0054dd', '#007add', '#0088dd', '#0098dd', '#009fcb', '#00a6b7',
+    '#00aaa3', '#00aa95', '#00aa88', '#00a353', '#009b13', '#00a200',
+    '#00ac00', '#00b700', '#00c200', '#00cc00', '#00d700', '#00e200',
+    '#00ec00', '#00f700', '#1dff00', '#58ff00', '#93ff00', '#c4fc00',
+    '#dcf400', '#efed00', '#f5df00', '#fcd200', '#ffc100', '#ffad00',
+    '#ff9900', '#ff6900', '#ff3900', '#fe0000', '#f10000', '#e40000',
+    '#d60000', '#cf0000', '#cc2c2c', '#cc7c7c', '#cccccc'
+],
+  YlOrRd: ['#ffffb2', '#fd8d3c', '#bd0026'],
+  BlYlOrPurBl : ['#0c5da5', '#f8db03', '#ff9500', '#c30083', '#0c5da5']
 };
 const LAZ_PERF_WASM_URL = new URL('./assets/wasm/laz-perf.wasm', import.meta.url);
 const CLICK_SAMPLE_FORMATTER = new Intl.NumberFormat(undefined, {
   minimumFractionDigits: 0,
-  maximumFractionDigits: 3,
+  maximumFractionDigits: 1,
 });
 const GENERATION_EFFICIENCY = 0.22;
 const GENERATION_LOSSES = 0.8;
@@ -55,14 +69,74 @@ function makeGradientFromStops(stops, shades = 256) {
   return colors;
 } 
 
-function makeColorMapColors(styleConfig = {}) {
+function getPaletteStops(styleConfig = {}) {
   if (Array.isArray(styleConfig.palette) && styleConfig.palette.length >= 2) {
-    const sorted = [...styleConfig.palette].sort((a, b) => a.value - b.value);
-    return makeGradientFromStops(sorted.map(p => p.color));
+    return [...styleConfig.palette]
+      .sort((a, b) => a.value - b.value)
+      .map(entry => entry.color);
   }
 
   const rampName = styleConfig.colormap_name ?? 'turbo';
-  return makeGradientFromStops(PALETTE_STOPS[rampName] ?? PALETTE_STOPS.turbo);
+  return PALETTE_STOPS[rampName] ?? PALETTE_STOPS.turbo;
+}
+
+function makeColorMapColors(styleConfig = {}) {
+  return makeGradientFromStops(getPaletteStops(styleConfig));
+}
+
+function formatPaletteRangeValue(value) {
+  if (!Number.isFinite(value)) {
+    return '';
+  }
+
+  return new Intl.NumberFormat(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function createPalettePreview(styleConfig = {}, isVisible) {
+  const hasExplicitPalette = (
+    Array.isArray(styleConfig.palette) && styleConfig.palette.length >= 2
+  ) || typeof styleConfig.colormap_name === 'string';
+
+  if (!hasExplicitPalette) {
+    return null;
+  }
+
+  const stops = getPaletteStops(styleConfig);
+  if (!Array.isArray(stops) || stops.length < 2) {
+    return null;
+  }
+
+  const preview = document.createElement('span');
+  preview.className = 'layer-palette';
+  preview.hidden = !isVisible;
+  preview.setAttribute('aria-hidden', 'true');
+
+  const bar = document.createElement('span');
+  bar.className = 'layer-palette-preview';
+  bar.style.backgroundImage = `linear-gradient(90deg, ${stops.join(', ')})`;
+  preview.appendChild(bar);
+
+  const rangeMin = styleConfig.value_range?.min;
+  const rangeMax = styleConfig.value_range?.max;
+  if (Number.isFinite(rangeMin) || Number.isFinite(rangeMax)) {
+    const labels = document.createElement('span');
+    labels.className = 'layer-palette-labels';
+
+    const minLabel = document.createElement('span');
+    minLabel.textContent = formatPaletteRangeValue(rangeMin);
+
+    const maxLabel = document.createElement('span');
+    maxLabel.textContent = formatPaletteRangeValue(rangeMax);
+
+    labels.appendChild(minLabel);
+    labels.appendChild(maxLabel);
+    preview.appendChild(labels);
+  }
+
+  return preview;
 }
 
 async function ensureLazPerfWasmBinary() {
@@ -348,7 +422,7 @@ function createClickPointer(maxExtentSize) {
 
 function createLayerSwitch(container, layerConfig, checked, onToggle) {
   const label = document.createElement('label');
-  label.className = 'switch-row';
+  label.className = 'switch-row layer-switch';
   label.htmlFor = `layer-${layerConfig.id}`;
 
   const input = document.createElement('input');
@@ -357,15 +431,37 @@ function createLayerSwitch(container, layerConfig, checked, onToggle) {
   input.setAttribute('role', 'switch');
   input.checked = checked;
 
+  const content = document.createElement('span');
+  content.className = 'layer-switch-content';
+
   const text = document.createElement('span');
+  text.className = 'layer-switch-title';
   text.textContent = layerConfig.name;
 
+  if (layerConfig.layer_units) {
+    const units = document.createElement('span');
+    units.className = 'layer-switch-units';
+    units.textContent = ` (${layerConfig.layer_units})`;
+    text.appendChild(units);
+  }
+
+  const palettePreview = createPalettePreview(layerConfig.style_config, checked);
+
   input.addEventListener('change', event => {
-    onToggle(event.target.checked);
+    const isChecked = event.target.checked;
+    if (palettePreview) {
+      palettePreview.hidden = !isChecked;
+    }
+    onToggle(isChecked);
   });
 
+  content.appendChild(text);
+  if (palettePreview) {
+    content.appendChild(palettePreview);
+  }
+
   label.appendChild(input);
-  label.appendChild(text);
+  label.appendChild(content);
   container.appendChild(label);
 }
 

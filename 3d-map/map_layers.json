@@ -30,7 +30,7 @@
       "is_masked": true,
       "azimuth": 315,
       "zenith": 45,
-      "intensity": 1,
+      "intensity": 0.5,
       "z_factor": 1,
       "elevation_layers_only": true
     }
@@ -60,13 +60,13 @@
       "layer_units": "m",
       "z_order": 2,
       "style_config": {
-        "opacity": 1,
+        "opacity": 0.7,
         "blending_mode": "normal", 
         "nodata": -9999,
-        "colormap_name": "turbo",
+        "colormap_name": "nipy_spectral",
         "value_range": {
-          "min": 10,
-          "max": 55
+          "min": 15,
+          "max": 50
         }
       }
     },
@@ -84,6 +84,48 @@
       }
     },
     {
+      "id": "slope",
+      "name": "Slope",
+      "type": "cog_raster",
+      "url": "./data/slope.tif",
+      "channels": [0],
+      "is_active": false,
+      "is_masked": true,
+      "is_clickable": true,
+      "layer_units": "degrees",
+      "z_order": 4,
+      "style_config": {
+        "opacity": 1,
+        "nodata": -9999,
+        "colormap_name": "spectral_r",
+        "value_range": {
+          "min": 0,
+          "max": 90
+        }
+      }
+    },
+    {
+      "id": "aspect",
+      "name": "Aspect",
+      "type": "cog_raster",
+      "url": "./data/aspect.tif",
+      "channels": [0],
+      "is_active": false,
+      "is_masked": true,
+      "is_clickable": true,
+      "layer_units": "degrees",
+      "z_order": 5,
+      "style_config": {
+        "opacity": 1,
+        "nodata": -9999,
+        "colormap_name": "BlYlOrPurBl",
+        "value_range": {
+          "min": 0,
+          "max": 360
+        }
+      }
+    },
+    {
       "id": "annual-poa",
       "name": "Annual POA",
       "type": "cog_raster",
@@ -93,7 +135,7 @@
       "is_masked": true,
       "is_clickable": true,
       "layer_units": "kWh/m²/year",
-      "z_order": 5,
+      "z_order": 6,
       "style_config": {
         "opacity": 1,
         "nodata": -9999,
@@ -118,11 +160,7 @@
       "style_config": {
         "opacity": 1,
         "nodata": -9999,
-        "palette": [
-          { "value": 2000, "color": "#ffffb2" },
-          { "value": 2375, "color": "#fd8d3c" },
-          { "value": 2750, "color": "#bd0026" }
-        ],
+        "colormap_name": "YlOrRd",
         "value_range": {
           "min": 2000,
           "max": 2850

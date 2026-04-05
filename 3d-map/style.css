@@ -167,6 +167,58 @@ body {
   font-size: 14px;
 }
 
+.layer-switch {
+  align-items: flex-start;
+}
+
+.layer-switch-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.layer-switch-title {
+  line-height: 1.2;
+}
+
+.layer-switch-units {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.layer-palette {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.layer-palette[hidden] {
+  display: none;
+}
+
+.layer-palette-preview {
+  display: block;
+  width: 100%;
+  height: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 999px;
+  background-color: #e5e7eb;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+}
+
+.layer-palette-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+  line-height: 1;
+  color: #64748b;
+}
+
 .switch-row input[role='switch'] {
   appearance: none;
   width: 38px;
