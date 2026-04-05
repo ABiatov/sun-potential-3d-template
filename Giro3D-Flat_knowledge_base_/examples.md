@@ -4130,7 +4130,7 @@ const map = new Map({
 instance.add(map);
 
 const key =
-    'pk.eyJ1IjoiZ2lybzNkIiwiYSI6ImNtZ3Q0NDNlNTAwY2oybHI3Ym1kcW03YmoifQ.Zl7_KZiAhqWSPjlkKDKYnQ';
+    '<MAPBOX-API-KEY>';
 const source = new TiledImageSource({
     format: new MapboxTerrainFormat(),
     source: new XYZ({
@@ -5196,7 +5196,7 @@ function loadMap(extent) {
     instance.add(map);
 
     const key =
-        'pk.eyJ1IjoiZ2lybzNkIiwiYSI6ImNtZ3Q0NDNlNTAwY2oybHI3Ym1kcW03YmoifQ.Zl7_KZiAhqWSPjlkKDKYnQ';
+        '<MAPBOX-API-KEY>';
 
     // Adds a XYZ elevation layer with MapBox terrain RGB tileset
     const elevationLayer = new ElevationLayer({
@@ -9319,7 +9319,7 @@ background.addLayer(starLayer);
 /////////////////////////////// Earth layers ////////////////////////////////////////////////////
 
 const mapboxApiKey =
-    'pk.eyJ1IjoiZ2lybzNkIiwiYSI6ImNtZ3Q0NDNlNTAwY2oybHI3Ym1kcW03YmoifQ.Zl7_KZiAhqWSPjlkKDKYnQ';
+    '<MAPBOX-API-KEY>';
 
 // Adds a XYZ elevation layer with MapBox terrain RGB tileset
 const elevationLayer = new ElevationLayer({
@@ -12236,7 +12236,7 @@ const map = new Map({ extent, backgroundColor: 'blue' });
 instance.add(map);
 
 const key =
-    'pk.eyJ1IjoiZ2lybzNkIiwiYSI6ImNtZ3Q0NDNlNTAwY2oybHI3Ym1kcW03YmoifQ.Zl7_KZiAhqWSPjlkKDKYnQ';
+    '<MAPBOX-API-KEY>';
 
 // Create a satellite layer with no blending at all (layer is completely opaque)
 const satellite = new ColorLayer({
@@ -12854,7 +12854,7 @@ let map;
 
 function addMapboxLayer(extent) {
     const apiKey =
-        'pk.eyJ1IjoiZ2lybzNkIiwiYSI6ImNtZ3Q0NDNlNTAwY2oybHI3Ym1kcW03YmoifQ.Zl7_KZiAhqWSPjlkKDKYnQ';
+        '<MAPBOX-API-KEY>';
 
     // Adds a satellite basemap
     const tiledLayer = new ColorLayer({
@@ -15377,7 +15377,7 @@ instance.add(map);
 const colorRamp = makeColorRamp('viridis');
 
 const key =
-    'pk.eyJ1IjoiZ2lybzNkIiwiYSI6ImNtZ3Q0NDNlNTAwY2oybHI3Ym1kcW03YmoifQ.Zl7_KZiAhqWSPjlkKDKYnQ';
+    '<MAPBOX-API-KEY>';
 // Adds a XYZ elevation layer with MapBox terrain RGB tileset
 const elevationLayer = new ElevationLayer({
     name: 'xyz_elevation',
@@ -16254,7 +16254,7 @@ instance.add(northArrow);
 northArrow.updateMatrixWorld(true);
 
 const token =
-    'pk.eyJ1IjoiZ2lybzNkIiwiYSI6ImNtZ3Q0NDNlNTAwY2oybHI3Ym1kcW03YmoifQ.Zl7_KZiAhqWSPjlkKDKYnQ';
+    '<MAPBOX-API-KEY>';
 
 const elevationLayer = new ElevationLayer({
     extent,
@@ -17047,7 +17047,7 @@ directionalLight.target.updateMatrixWorld(true);
 let map;
 
 const key =
-    'pk.eyJ1IjoiZ2lybzNkIiwiYSI6ImNtZ3Q0NDNlNTAwY2oybHI3Ym1kcW03YmoifQ.Zl7_KZiAhqWSPjlkKDKYnQ';
+    '<MAPBOX-API-KEY>';
 
 // Adds a XYZ elevation layer with MapBox terrain RGB tileset
 const elevationLayer = new ElevationLayer({
@@ -18041,7 +18041,7 @@ async function addLayers(key) {
 
 // Create our elevation layer using Giro3D's default mapbox api key
 addLayers(
-    'pk.eyJ1IjoiZ2lybzNkIiwiYSI6ImNtZ3Q0NDNlNTAwY2oybHI3Ym1kcW03YmoifQ.Zl7_KZiAhqWSPjlkKDKYnQ',
+    '<MAPBOX-API-KEY>',
 ).catch(console.error);
 
 instance.view.camera.position.set(extent.maxX, extent.minY, 2000);
@@ -23482,7 +23482,7 @@ const map = new Map({
 instance.add(map);
 
 const key =
-    'pk.eyJ1IjoiZ2lybzNkIiwiYSI6ImNtZ3Q0NDNlNTAwY2oybHI3Ym1kcW03YmoifQ.Zl7_KZiAhqWSPjlkKDKYnQ';
+    '<MAPBOX-API-KEY>';
 
 // Adds a XYZ elevation layer with MapBox terrain RGB tileset
 const elevationLayer = new ElevationLayer({
@@ -25272,7 +25272,7 @@ async function createMap(instance, extent) {
     await instance.add(map);
 
     const key =
-        'pk.eyJ1IjoiZ2lybzNkIiwiYSI6ImNtZ3Q0NDNlNTAwY2oybHI3Ym1kcW03YmoifQ.Zl7_KZiAhqWSPjlkKDKYnQ';
+        '<MAPBOX-API-KEY>';
 
     // Adds a XYZ elevation layer with MapBox terrain RGB tileset
     const elevationLayer = new ElevationLayer({
@@ -26506,7 +26506,7 @@ const instance = new Instance({
 
 function createMap(mapExtent, tileset) {
     const key =
-        'pk.eyJ1IjoiZ2lybzNkIiwiYSI6ImNtZ3Q0NDNlNTAwY2oybHI3Ym1kcW03YmoifQ.Zl7_KZiAhqWSPjlkKDKYnQ';
+        '<MAPBOX-API-KEY>';
     const map = new Map({
         extent: mapExtent,
         lighting: { enabled: true, elevationLayersOnly: true },
@@ -27460,7 +27460,7 @@ const map = new Map({ extent });
 instance.add(map);
 
 const key =
-    'pk.eyJ1IjoiZ2lybzNkIiwiYSI6ImNtZ3Q0NDNlNTAwY2oybHI3Ym1kcW03YmoifQ.Zl7_KZiAhqWSPjlkKDKYnQ';
+    '<MAPBOX-API-KEY>';
 
 // Adds a XYZ elevation layer with MapBox terrain RGB tileset
 const elevationLayer = new ElevationLayer({
@@ -27715,7 +27715,7 @@ instance.view.setControls(controls);
 
 // Adds a color layer from a VectorTile source
 const key =
-    'pk.eyJ1IjoiZ2lybzNkIiwiYSI6ImNtZ3Q0NDNlNTAwY2oybHI3Ym1kcW03YmoifQ.Zl7_KZiAhqWSPjlkKDKYnQ';
+    '<MAPBOX-API-KEY>';
 
 const vectorTileSource = new VectorTileSource({
     url: `${
